@@ -11,12 +11,27 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 import static org.hamcrest.core.IsEqual.equalTo;
 /*
-README
-1)Possible improved to catch bug add compare to schema for example. Certain assets have date_created > datemodified.
+Some notes
+1)  To improve this code Json schema validators can be used. Certain assets have date_created > datemodified.
     If this is important field we should add validation
 2) Token refresh is not added for now. It should be handled by test code.
 3) Bug max limit param is 10 but when greater value is added to limit it returns 0 results, Ideally it should return max 10 results
     Example http://interview-testing-api.webdamdb.com/api/v1/search?query=&sort=asc&limit=11 should return 10 values
+4) Did not add any perf test
+5) Lot of configs can be moved to a file
+
+Bug.
+1) Logout failure currently. JSON returns logged in true
+2) Sorting work with asc filter but descending works with desc. dsc return results in wrong sorted order
+    Example http://interview-testing-api.webdamdb.com/api/v1/search?sort=desc
+    vs http://interview-testing-api.webdamdb.com/api/v1/search?sort=dsc
+    Need to confirm is this is as per requirement
+3) Limit param takes max count 10, when limt=11 it returns null. Ideally it should work return max results
+http://interview-testing-api.webdamdb.com/api/v1/search?query&sort=desc&limit=11
+
+4) Calling API without access token returns 500 internal error and call stack information. This should be handled better
+
+
  */
 
 public class WebdamAPI {
@@ -83,7 +98,7 @@ public class WebdamAPI {
     public void searchAssetsWithWhiteSpaces() {
         given()
                 .when()
-                    .param("query","old")
+                    .param("query"," old ")
                     .param("sort", "asc")
                     .param("limit",0)
                     .get("/search")
@@ -109,6 +124,37 @@ public class WebdamAPI {
     }
 
     @Test
+    //Verify that user can make search using different languages
+    public void searchandWithDifferentLang() {
+        given()
+                .when()
+                .param("query","¿Estás cansado?")
+                .param("sort", "asc")
+                .param("limit",0) //validating max 2 reponses
+                .get("/search")
+                .then()
+                .statusCode(200)
+                .assertThat()
+                .body("text",contains("¿Estás cansado?"));
+    }
+
+    @Test
+    //Verify that search is case sensitive
+    //Current implementation looks case sentive. Hence passing it based on no results for capital A.
+    public void searchandWithUpperCase() {
+        given()
+                .when()
+                .param("query","This cherry red boat from 1986 is one of a kind")
+                .param("sort", "asc")
+                .param("limit",0) //validating max 2 reponses
+                .get("/search")
+                .then()
+                .statusCode(200)
+                .assertThat()
+                .body("text", contains("This cherry red boat from 1986 is one of a kind"));
+    }
+
+    @Test
     //Verify that ascending sort works as expected
     public void searchandValidateSortingAsc() {
         String[] assetIDs = new String[] {"12341","12342","12343"};
@@ -129,13 +175,15 @@ public class WebdamAPI {
     @Test
     //Verify that descending sort works as expected
     public void searchandValidateSortingDsc() {
-        String[] assetIDs = new String[] {"12343","12342","12341"};
+        String[] assetIDs = new String[] {"12345","12344","12343"};
         given()
                 .when()
+                .log().all()
                     .param("query","")
-                    .param("sort", "dsc")
+                    .param("sort", "desc")
                     .param("limit",3)
                     .get("/search")
+
                 .then()
                     .statusCode(200)
                     .assertThat()
@@ -173,6 +221,7 @@ public class WebdamAPI {
                     .body("asset_id", contains("12343"));
     }
 
+
     @Test
     //Verify asset end point.
     public void fetchAsset() {
@@ -197,6 +246,19 @@ public class WebdamAPI {
                     .body("asset_id", contains("12341"))
                 //Just a sample showing validation of data returned. Can be extensive if needed
                     .body("text",contains("an apple a day keeps the doctor away"));
+
+    }
+
+    @Test
+    //Verify assetID does not exists. Should return 404
+    public void fetchNonExistingAssets() {
+        given()
+                .when()
+                .get("/asset/test") //This can be changed to fetch asset api then fetch an asset from reponse. If data is not static or changing.
+                .then()
+                .log()
+                .body()
+                .statusCode(404);
 
     }
 
